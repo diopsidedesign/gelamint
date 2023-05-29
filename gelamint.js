@@ -1,129 +1,10 @@
-// gelamint 0.1
+// gelamint 0.1 
+import { GelSheet } from './gelsheet.js'
+import * as Settings from './gelconf.js'
 
-// GelSheet - A wrapper class around the DOM native 'CSSStyleSheets' interface that makes
-// it easier + more semantic to manipulate / remove style rules
-// caches generated sheets  
-export class GelSheet extends CSSStyleSheet {
+const windowFadeTime = Settings.windowFadeTime
 
-   static cache = {}  
-
-   static shorthandProps = [
-      'background','font','margin','border','transition',
-      'animation','transform','padding','list-style','border-radius'
-   ]
-
-   // Lists all style properties affected by a CSSStyleSheet Rule
-   static getAllStylesInRule(rule) { 
-      return Object.values(
-         Array(rule.styleMap.size).fill()
-         .map( (_,i) => rule.style[i] )
-      )
-   } 
-
-   // Removes the css for the indicated property from a larger block of css rule txt
-   static removeStyleFromRuleText(rTxt, prop, i=rTxt.indexOf(prop)) { 
-      return rTxt.replace(rTxt.substring(i, (rTxt.indexOf(';', i+1))+1) ,'')
-   } 
-
-   // for converting between DOM/JS and HTML style property identifiers
-   static camelCaseToDashSep(str) {
-      return str?.toLowerCase() !== str ?
-         str.replace(/[A-Z]/g, match => ("-"+match.toLowerCase()))
-         : str
-   }
-
-   // Converts groups of style property + value declarations into a single
-   // block of CSS rule text for the provided selector
-   static stringifyAsRule(rules, selector, childSel = "") { 
-      return selector+' '+childSel+`{` +
-         rules.map( obj => Object.entries(obj).flat())
-            .map( ([prop,val]) => GelSheet.camelCaseToDashSep(prop) +
-               ' : '+val+';')
-            .join('\n')
-         +' }' 
-   } 
-
-   constructor(sheetName, initObjOrTxt) { super(); 
- 
-      this.noCache = initObjOrTxt.noCache === true  
-      this.identifier = sheetName; 
- 
-      if (sheetName !== undefined) { 
-         // dont want to override existing sheets if for some reason
-         // duplicate names are passed, so we + an incrementing # to the end
-         if (GelSheet.cache[sheetName] !== undefined   
-            && GelSheet.cache[sheetName].noCache === false) {
-            this.identifier = sheetName + '_' +
-               (Object.keys(GelSheet.cache)
-                  .filter( key => key.includes(sheetName)).length  + 1)
-         }
-         GelSheet.cache[this.identifier] = this
-      }
-      //
-      if (typeof initObjOrTxt === 'string'
-         || (typeof initObjOrTxt === 'object'
-             && 'content' in initObjOrTxt)) {
-         // if str content was passed to constructor, 
-         // apply it to the new css sheet
-         this.replaceSync(initObjOrTxt.content ?? initObjOrTxt) //CSSStyleSheet api
-      }
-   }
-
-   // gets all rules in this sheet that exactly match the provided
-   // selector
-   getRuleGroup(selector) {   
-      return ( matches => matches.length === 1 ? matches[0] : matches)(
-         Array.from(this.rules).filter(
-            rule => rule.selectorText === selector
-      ))
-   }
-
-   // If found, returns the value of the style property associated 
-   // w/ the rule for the provided selector
-   getPropVal(prop, selector = ':host') { 
-      const ruleGroup = this.getRuleGroup(selector); 
-      if (ruleGroup && GelSheet.getAllStylesInRule(ruleGroup).includes(prop)) 
-         return ruleGroup.style[prop]  
-      return null
-   } 
-
-   // finds the first index of the CSSrule that is applied
-   // to the provided selector and contains the provided prop 
-   indexOfRule(prop, selector) {
-      return Array.from(this.rules).findIndex( rule => (
-            rule.selectorText === selector && (
-               GelSheet.getAllStylesInRule(rule).map( rType => (
-                  GelSheet.shorthandProps.includes(prop) ?
-                     (rType.includes(prop)) 
-                     : (rType === prop)) 
-               ).includes(true)
-      )))
-   } 
-
-   // props and selectors - str or str[], precise - boolean
-   // if precise is false it deletes the *entire* cssrule that contains
-   // the provided style prop(s) and is under the provided selector
-   // if true, it removes the rule but immediately restores a new version
-   // of it without the style property indicated
-   deleteRules(props, selectors, precise = false) {
-      [].concat(props).forEach( prop => {
-         [].concat(selectors).forEach( selector => {  
-            for (let index = this.indexOfRule(prop, selector);
-                  index !== -1;
-                  index = this.indexOfRule(prop, selector)) { 
-               if (precise === true) {
-                  this.insertRule(   //CSSStyleSheet api
-                     GelSheet.removeStyleFromRuleText(
-                        this.rules[index].cssText, prop),
-                     index + 1) 
-               }
-               this.deleteRule(index);   //CSSStyleSheet api
-            } 
-         })
-      }) 
-   } 
-}
-
+export { windowFadeTime }
 
 
 
@@ -143,6 +24,168 @@ export class GelSheet extends CSSStyleSheet {
 // Gelamint - A handy base web-component class that all others can inherit from
 // uses constructable stylesheets API for style scoping and shadow DOM for templating
 export class Gelamint extends HTMLElement {  
+
+
+
+   static dashSepToCamelCase(str) {
+      return str.split('-').reduce( (a, b)=> a + b.charAt(0).toUpperCase() + b.slice(1) ).replace(/[^a-zA-Z0-9]/g,'') 
+   }
+
+
+
+   static #gelForms = {}
+
+
+
+
+   static imitate(objFrom, objTo = this) { 
+      Object.entries(objFrom).forEach(([prop,val]) => {  
+         if (!Settings.gelamintReserved.includes(prop)) {
+            const descCopy = { ...Object.getOwnPropertyDescriptor(objFrom, prop) } 
+            if (typeof val === 'function') { 
+               descCopy.value = val.bind ? val.bind(objTo) : val
+            }
+            Object.defineProperty(objTo, prop, descCopy ) 
+         } 
+      }) 
+   }
+
+
+
+
+
+
+
+   static makeCustomEl(elName, config, context, getNew) { 
+      if (customElements.get(elName) === undefined) {
+         const classDef = Gelamint.#gelForms[elName]
+                        = Gelamint.#createDerivedClassDef(
+            config,
+            context
+         )
+         customElements.define(elName, classDef)
+         return getNew === true ? new classDef() : classDef
+      }  
+      return Gelamint.#gelForms[elName]
+   }
+
+   static #createDerivedClassDef(config, context) {  
+
+      return class extends this {
+             
+            static { 
+               if ('static' in config) {
+                  Gelamint.imitate.bind(this)(config.static); 
+                   if (config.static.oninit) {
+                     config.static.oninit.bind ?
+                        config.static.oninit.bind(this)()
+                        : (config.static.oninit() ?? config.static.oninit)
+                  }
+               } 
+            }
+
+            static get boundStyles()        { return [].concat(config.boundStyles ?? []) } 
+            static get observedAttributes() { return Object.keys(config.attrObservers ?? []) }
+
+            get us()   { return this.constructor } 
+
+            constructor() { super(); 
+
+               this.imitate = Gelamint.imitate.bind(this);
+
+               [this.styles, this.template] = [config.styles, config.template] 
+
+               this.render() 
+
+               if (config.attrObservers) {
+                  Object.entries(config.attrObservers).forEach( ([attr, respDefs]) => {
+                     if (typeof respDefs === 'function') {
+                        config.attrObservers[attr] = { onchange() { respDefs.bind(this)() } }
+                     } else {
+                        Object.entries(respDefs).forEach( ([respType, func]) => { 
+                           config.attrObservers[attr][respType] = func.bind(this)
+                        })
+                     } 
+                  })
+               }
+               if (config.listeners && typeof config.listeners === 'object') {
+                  this.addListener(config.listeners)
+               } 
+
+               const propList = Object.keys(config),
+                     eventNames = Settings.eventNames 
+
+               propList.filter( key => eventNames.includes(key))
+                       .forEach( eventName => {
+                  const opts = {
+                     passive: 'onscrollonwheel'.includes(eventName),
+                     once: eventName === 'onpointerup',
+                     useCapture: false
+                  }
+                  this.addEventListener(eventName.slice(2), config[eventName].bind(this), opts);
+               }); 
+
+               propList.filter(  prop =>
+                  !eventNames.includes(prop) && !Settings.gelamintReserved.includes(prop))
+                       .forEach( prop => {  
+                        const z = {...Object.getOwnPropertyDescriptor(config, prop)};
+                        if (typeof z.value === 'function') {
+                           z.value = z.value.bind(this)
+                        }
+                        Object.defineProperty( this, prop, z) 
+               })
+
+               if (config.oninit) { config.oninit.bind(this)() }
+            }
+
+            
+            
+            connectedCallback() {
+               
+               if (config.elRefs) {
+                  const refList = (Array.isArray(config.elRefs)) ?
+                     config.elRefs.map( sel => [Gelamint.dashSepToCamelCase(sel), sel] )
+                     : Object.entries(config.elRefs); 
+                  
+                  refList.forEach(([identifier, selector]) => { 
+                     this[identifier] = this.shadowRoot.querySelector(selector)
+                  })
+               }
+            
+               const slots = this.getSlotNodes()
+               if (slots?.length > 0){
+                  this.slotNodes = slots
+               }
+            
+               if (config.onload) {
+                  config.onload.bind ? config.onload.bind(this)() : config.onload()
+               }
+            
+               this.us.staticmethod ? this.us.staticmethod() : null;
+            }
+
+            attributeChangedCallback(prop, oldVal, newVal) { 
+               if (prop in config.attrObservers) {
+                  const attr = config.attrObservers[prop]
+                  if ('onadd' in attr && oldVal === null) {   
+                     attr.onadd(newVal)
+                  }
+                  else if ('onremove' in attr && newVal === null) {   
+                     attr.onremove(`attr: ${prop} removed`)
+                  }
+                  if ('onchange' in attr) { 
+                     attr.onchange(oldVal, newVal)
+                  }
+               }           
+            } 
+      } 
+   }
+
+
+
+
+
+   static get boundStyles() { return [] }
 
    static defaultCss = getDefaultCss()
 
@@ -229,6 +272,37 @@ export class Gelamint extends HTMLElement {
       return svg
     } 
 
+    static styleAliases = {
+      size : {
+         width: w => `${w[0]}px`,
+         height: h => `${h[1]}px`
+      }, 
+      position: {
+         transform : vals => `translate3d(${vals[0]}px, ${vals[1]}px, 0px)` 
+      },
+      rotation: {
+         transform: val => `rotate(${val}deg)`
+      }
+   }
+
+   static observeWindowResize(callback) {
+      return new ResizeObserver( entries => {
+         Object.entries(entries).forEach( entry => {
+            if ('contentBoxSize' in entry ) {
+               callback(entry.contentBoxSize)
+            }
+         })
+      })
+   }
+
+   static checkCss(str) { 
+      if (str.trim().slice(-1) !== '}') {
+         if (str.indexOf('{') === -1) {
+            return `:host {\n${str}\n}\n`
+         }
+      }
+      return str
+   }
    
 
    #template;
@@ -238,18 +312,18 @@ export class Gelamint extends HTMLElement {
 
    attr = {
       // a person can only type the word 'attribute' out so many times...
-      get: attr => this.getAttribute(attr),
+      get: attr        => this.getAttribute(attr), 
+      set: (attr, val) => this.setAttribute(attr, val ?? ''), 
+      has: attr        => this.hasAttribute(attr),
 
-      set: (attr, val) => this.setAttribute(attr, val),
+      setIfNot: (attr, val) => !this.hasAttribute(attr) ? this.setAttribute(attr, val ?? '') : null,
 
-      has: attr => this.hasAttribute(attr),
-
-      remove: attr => this.removeAttribute(attr), 
+      remove: (...attrs) => attrs.forEach( attr => this.removeAttribute(attr)), 
 
       setMany: attrDict => Object.entries(attrDict).forEach(
          ([key,val]) => el.setAttribute(key, val)),
 
-      toggle: attr => this.attr.has(attr) ?
+      toggle: (attr, condition = this.attr.has(attr)) => condition ?
          this.attr.remove(attr) : this.attr.set(attr,''),
 
       readOr: (attr, fb) => this.attr.has(attr) ? this.attr.get(attr) : fb,
@@ -263,6 +337,13 @@ export class Gelamint extends HTMLElement {
          this.attr.toList(attr).map( s => parseInt(s))
          : null 
    } 
+   class = {
+      toggle: (cls, condition = !this.classList.contains(cls)) => condition ?
+         this.classList.add(cls) : this.classList.remove(cls),  
+      add:    cls => this.classList.add(cls), 
+      remove: cls => this.classList.remove(cls), 
+      has:    cls => this.classList.contains(cls),
+   }
 
    constructor() {
       super();
@@ -275,9 +356,12 @@ export class Gelamint extends HTMLElement {
          this.uniqueId = this.attr.get('uid')
       }
       this.hostSelector = `:host([uid="${this.uniqueId}"])` // for scoping style rules
-
+      const us = this.constructor;
       // init the shadow DOM, immediately applying the default CSS stylings to it 
       this.attachShadow({ mode: 'open' }).adoptedStyleSheets = [ this.#sheets.default ]; 
+      if (us.boundStyles.length) {
+         us.boundStyles.forEach( style => this.initStyleRelay(style) )
+      } 
    } 
    
    get name() {
@@ -307,7 +391,7 @@ export class Gelamint extends HTMLElement {
    // - a function, to interpolate new values into template content w/ each stamping
    // - an obj, w/ content: as the generating function and other misc options
    set template(contentGen) {
-      console.log(this.#template);
+      
       if (typeof contentGen === 'function') {
          this.#template = { 
             generate: contentGen,
@@ -330,56 +414,64 @@ export class Gelamint extends HTMLElement {
       } 
    }
 
+   get lastRender() { return this.#template.lastRender }
    set styleSheet(sheet) { 
       this.#sheets['main'] = sheet; 
       this.#applyStyleSheet(this.#sheets.main);
    } 
    get styleSheet() { return this.#sheets.main }
    get styles()     { return this.styleSheet }
-   set styles(str)  { this.styleSheet = this.makeSheet('main', str) }
+   set styles(str)  {
+      this.styleSheet = this.makeSheet('main', Gelamint.checkCss(str))
+   } 
 
-   get slotNodes()  { return this.getSlotNodes() } 
 
-   newCustomEvent(name, detail){
-      return new CustomEvent(name, 
+
+  // get slotNodes()  { return this.getSlotNodes() } 
+
+   emitCustomEvent(name, detail) {
+      this.shadowRoot.dispatchEvent(
+         new CustomEvent(name, 
          {
             composed:true,
             bubbles:true,
             detail: detail ?? this.name
-         })
-   }
+         }))
+   } 
 
-   getElement(strOrEl) {
-      return strOrEl instanceof HTMLElement ? strOrEl :
-         this.shadowRoot.querySelector(strOrEl)
-   }
-
-   #initIntersectionObserver(target) {  
-      if (!this.#observers.intersection) {
-         this.#observers['intersection'] = {}
+   getElement(strOrEl) { 
+      if (strOrEl instanceof Window || strOrEl instanceof HTMLElement) {
+         return strOrEl
       }
-      const funcs = Object.fromEntries(
-         Object.entries(this.#observers.temp)
-            .filter(([name,_]) =>
-               (['screenLeave','screenReturn'].includes(name)))),            
-         key = target.localName+'_'+target.id;
-          
-      this.#observers.intersection[key] = {
-         target,
-         observer: Gelamint.observeOnOffScreen(
-            funcs.screenLeave ?? (()=>{}),
-            funcs.screenReturn ?? (()=>{})
-         )
-      };
-      this.#observers.intersection[key].observer.observe(target)
-      this.#observers.temp = {}
+      const search = this.shadowRoot.querySelector(strOrEl) 
+      if (search) {
+         return search
+      }
+      for (const tmpl of this.getElements('template') ) {
+         const search2 = tmpl.content.querySelector(strOrEl)
+         if (search2 != null) return search2
+      }
+      return null
    }
+   getElements(selector) {
+      return this.shadowRoot.querySelectorAll(selector)
+   } 
+
+   #initObserver(target, observer) {
+      target = target.startsWith ? this.shadowRoot.querySelector(target) : target
+      this.#observers[target.localName+'_'+target.id] = {
+         target: target ,
+         observer: observer
+      } 
+      observer.observe(target)
+      this.#observers.temp = {}
+   } 
 
    timer = 0;
 
 
    // One stop shop for adding event listeners and observers
-   
+
    // if an object is passed in, it will use the keys of the obj
    // for the event types, and their values as the associated functions
    // if no string selector is passed in with the object, the listeners
@@ -390,46 +482,74 @@ export class Gelamint extends HTMLElement {
    // If a string or strings are included w a function, 
    // it tries to identify which would be an eventType and which would be a 
    // element selector, and applies the listeners appropriately
-   addListener(...args) {   
+   addListener(...args) {    
 
-      const objInd = args.length === 3 ? -1 :
-         args.findIndex(a=>typeof a==='object'); 
+      if (args.indexOf(true) === -1) {
 
-      if (objInd >= 0) {
-         const elem = args.length === 1 ? this : this.getElement(args[0]); 
-         return  Object.entries(args[objInd])
-                  .map(([eType,eFunc]) => [ elem, eType, eFunc ])
-                  .forEach( argGroup => this.addListener(...argGroup));
+         const objInd = args.length === 4 ? -1
+         : args.findIndex( a => typeof a === 'object' && !Array.isArray(a)); 
+         
+         if (objInd >= 0 && args[3] !== true) { 
+
+            const obj = args.splice(objInd)[0];
+           
+           return Object.entries(obj)
+               .filter( entry => entry[0] !== 'children')
+               .map( ([eType, eFunc]) => [
+                  (
+                     eType in Settings.ownedEvents ?
+                        Settings.ownedEvents[eType]
+                        : (args.length===1) ?
+                              this.getElement(args[0])
+                              : this
+                  ),
+                  eType,
+                  eFunc.bind ? eFunc.bind(this) : eFunc,
+                  true
+               ]) 
+               .concat(obj.children ? obj.children.map( z => [...z,true]) : []) 
+               .forEach( argGroup => this.addListener(...argGroup))  
+         } 
       } 
+      let selector, eventType, func;
 
-      const funcInd = args.findIndex( a => typeof a==='function'),
-            selIsEl = args[0] instanceof HTMLElement;  
-
-      let selector, eventType; 
-
-      if (selIsEl)            { [selector, eventType] = [args[0], args[1]] } 
-      else if (funcInd === 0) { [selector, eventType] = [this, 'click']    }
-      else {
-         const strs = args.filter(a=>typeof a==='string'),
-              selAt = strs.findIndex(
-                  str => str.replace(/[^A-Za-z0-9]/g,'').length!==str.length);  
-         selector = selAt >= 0 ? strs.splice(selAt, 1)[0] : this 
-         eventType = strs.length === 1 ? strs[0] : 'click' 
+      if (args[3] === true || (args.length === 2 && args[1] === true && Array.isArray(args[0]))) { 
+         [ selector, eventType, func ] = args[0]?.map ? args[0].concat([]) : args.slice(0,-1) 
+      } else {
+         func = args.splice(args.findIndex(a => typeof a==='function'), 1)[0];
+         selector = ( selInd => selInd >= 0 ? args.splice(selInd, 1)[0] : this)(
+            args.findIndex(str => (
+                  str instanceof HTMLElement
+               || str instanceof Window
+               || (str.startsWith && str.replace(/[^A-Za-z0-9]/g,'').length!==str.length)))
+            ); 
+         eventType = args.length === 1 ? args[0] : 'click';
       } 
-
-      if (  eventType === 'screenLeave'
-         || eventType === 'screenReturn') {   
-         this.#observers.temp[eventType] = args[funcInd] 
-         if (this.timer) clearTimeout(this.timer)
-         this.timer = setTimeout( () => {
-            this.#initIntersectionObserver(this.getElement(selector))
-         }, 20)
-      } 
+  
+      if (['screenLeave','screenReturn','resize'].includes(eventType)) {   
+         this.#observers.temp[eventType] = func
+         if (eventType.includes('screen')) { 
+            clearTimeout(this.timer); this.timer = setTimeout(
+               (funcs = Object.fromEntries(
+                  Object.entries(this.#observers.temp)
+                     .filter(([name,_]) =>
+                        (['screenLeave','screenReturn'].includes(name))))
+               ) => { 
+               this.#initObserver(this.getElement(selector),
+                  Gelamint.observeOnOffScreen(
+                     funcs.screenLeave ?? (()=>{}),
+                     funcs.screenReturn ?? (()=>{}) )
+            )}, 20)
+         }
+         else {
+            this.#initObserver(this, Gelamint.observeWindowResize(func)); 
+         }
+      }  
       else { 
-         this.getElement(selector).addEventListener(eventType, args[funcInd])   
-      } 
+         this.getElement(selector).addEventListener(eventType, func)
+      }
    }
-
+ 
    makeSheet(name, content) {    
       const ident = (this.localName + '_')    
          + (this.title ? this.title + '_' : ``) 
@@ -450,15 +570,7 @@ export class Gelamint extends HTMLElement {
       ]
    } 
 
-   static styleAliases = {
-      size : {
-         width: w => `${w[0]}px`,
-         height: h => `${h[1]}px`
-      }, 
-      position: {
-         transform : vals => `translate3d(${vals[0]}px, ${vals[1]}px, 0px)` 
-      }
-   }
+   
 
    // this function initalizes getters and setters for the style property
    // name passed in that intercept operations on that particular style and apply
@@ -477,7 +589,7 @@ export class Gelamint extends HTMLElement {
             opts = propDef.options,
          targets = prop in aliases ? Object.keys(aliases[prop]) : [].concat(prop);
      
-      if (prop && opts?.isolate && !(prop in this.#sheets)) { 
+      if (prop && (opts?.isolate !== false) && !(prop in this.#sheets)) { 
          this.#sheets[prop] = this.makeSheet(prop, { noCache: true}) 
          this.#applyStyleSheet(this.#sheets[prop])
       }  
@@ -485,7 +597,8 @@ export class Gelamint extends HTMLElement {
       const targetSheet = this.#sheets[prop] //?? this.styles
  
       Object.defineProperty(self.style, prop, { 
-
+         configurable: true,
+         enumerable: false,
          get: function() {
             return self.style[`_${prop}`]
          },
@@ -494,25 +607,26 @@ export class Gelamint extends HTMLElement {
 
             if (!Array.isArray(newVal) && typeof newVal === 'object') {
                newVal = newVal.value ??  Object.values(newVal)[0] 
-            }   
-
+            }    
             const out = prop in aliases ? 
                targets.map( (t) => ({ [t] : (aliases[prop][t])(newVal) }) ) :
                targets.map( (t) => ({ [t] :  newVal  }) );
 
-            self.style[`_${prop}`] = newVal;
-
-            if (opts?.isolate) { 
-               targetSheet.replaceSync(
-                  GelSheet.stringifyAsRule( out.flat(), self.hostSelector )
-               );  
-            } else {
-               let oldAt = targetSheet.indexOfRule(prop); 
-               targetSheet.insertRule(
-                  GelSheet.stringifyAsRule( out, self.hostSelector ),
-                  oldAt + 1
-               );
-            } 
+            if (self.style[`_${prop}`]?.toString() !== newVal.toString()) {
+      
+               self.style[`_${prop}`] = newVal; 
+               if (opts?.isolate !== false) { 
+                  targetSheet.replaceSync(
+                     GelSheet.stringifyAsRule( out.flat(), self.hostSelector )
+                  );  
+               } else {
+                  let oldAt = targetSheet.indexOfRule(prop); 
+                  targetSheet.insertRule(
+                     GelSheet.stringifyAsRule( out, self.hostSelector ),
+                     oldAt + 1
+                  );
+               } 
+            }  
          }
       }) 
    }
@@ -541,7 +655,7 @@ export class Gelamint extends HTMLElement {
    getSlotNodes(name) {
       return this.shadowRoot.querySelector(
             name ? `slot[name="${name}"]` : 'slot')
-         .assignedElements()
+         ?.assignedElements()
    } 
 
    // generate a new document fragment w/ updated content
@@ -555,8 +669,12 @@ export class Gelamint extends HTMLElement {
             : []; 
 
       newT.innerHTML = this.#template.lastRender = this.#template.generate(params);
-      console.log(this.#template.lastRender);
+      
       return newT.content.cloneNode(true) 
+   }
+
+   defineCustomChildElement(elemName, config) { 
+      Gelamint.makeCustomEl(elemName, config, this)
    }
 
 
@@ -570,12 +688,11 @@ export class Gelamint extends HTMLElement {
       return this.shadowRoot
    }  
 
-   disconnectedCallback() { 
-      Object.entries(this.#observers).forEach(
-         ([key, set]) => Object.entries(set).forEach(
-            ([key, obs]) => obs.observer.disconnect(obs.target) )
-      ) 
-      this.#observers = {}
+   disconnectedCallback() {  
+      Object.entries(this.#observers).forEach(([_, obs]) => { 
+         if (obs.observer) obs.observer.disconnect(obs.target)
+      }) 
+      this.#observers = { temp: {} } 
    }
 }
 
@@ -589,6 +706,14 @@ function getDefaultCss() { return `
    h1,h2,h3,h4 {  margin:0;   padding: 0;         } 
    .opaque     {  opacity: 1!important;           }    
    .visible    {  visibility: visible!important;  } 
+
+
+   :host(.no-transitions)  div,
+   :host(.window-resizing) div, 
+   :host(.window-resizing) button, 
+   :host(.window-resizing) button * { 
+      transition: none!important;
+   } 
 
    label, button,
    input[type=text],         input[type=text]:active,
@@ -647,5 +772,3 @@ function getDefaultCss() { return `
 
 
 
- 
- 
