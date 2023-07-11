@@ -19,6 +19,11 @@
     "constructable-stylesheets",
     "library"
   ],
+  "dependencies": {
+    "coordlet": "*",  
+    "gelatint": "*", 
+    "gelicons": "*"
+  },
   "author": "diopside",
   "license": "MIT",
   "bugs": {
