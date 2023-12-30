@@ -1,7 +1,11 @@
 import * as REF from './ref.js'
 
+// Gelamint's 'junk drawer'; general-purpose functions
+// that are used in many other places or just don't fit in 
+// anywhere else
 export const funcs = {
 
+   // fetches remote content using the native 'fetch' method, caching results
    cachedFetch: (function(){
 
       const memos = new Map() 
@@ -181,7 +185,8 @@ export const funcs = {
             : blank
       }
    },
- 
+
+   // general purpose DOM element creator function
    makeEl(tagName, opts) {   
       const el = REF.SVGTAGS.has(tagName) ?
            document.createElementNS('http://www.w3.org/2000/svg', tagName)
@@ -321,7 +326,8 @@ export const funcs = {
          return Math.round(val * 10**decPlcs) / 10**decPlcs
       } 
    },
- 
+
+   // in: whatever -> out: template element
    templify(contents, attrs) {
       if (contents instanceof HTMLTemplateElement) {
          return attrs ?
