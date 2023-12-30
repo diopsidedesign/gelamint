@@ -1,6 +1,8 @@
 import { Gel } from "./gel.js"
 
-Gel.mint('gel-frame',(numClones = 0)=> ({
+let numClones = 0;
+
+Gel.mint('gel-frame', {
 
    stylesUrl:
       `./src/gel_frame.css`,     
@@ -253,4 +255,4 @@ Gel.mint('gel-frame',(numClones = 0)=> ({
       setTimeout(()=> this.remove(), 0); 
    },
 
-}))
+})
