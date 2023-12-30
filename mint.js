@@ -543,7 +543,7 @@ export const mint = (function() {
          }// end static initialization block  
 
          constructor() { 
-            super();  // <- gel_base.js
+            super();  // <- base.js
 
             this.initComplete = false;   
             this.renderCount  = 0;   
