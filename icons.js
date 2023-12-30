@@ -259,10 +259,16 @@ const Gelicons = (function(){
 
       return {
          parseNames,
-         get availableIcons(){ return Object.keys(iconIndex) },
-         iconExists: (iconName) => (iconName=='spacer' || Gelicons.availableIcons.includes(iconName)),
-         getIcon:    (iconName) => getTemplate(iconName)?.content.cloneNode(true) ?? null,
-         makeButton: (name, opts={}) => { 
+          
+         get availableIcons(){
+             return Object.keys(iconIndex)
+         },
+          
+         iconExists: (iconName)=> (iconName=='spacer' || Gelicons.availableIcons.includes(iconName)),
+          
+         getIcon: (iconName)=> getTemplate(iconName)?.content.cloneNode(true) ?? null,
+          
+         makeButton(name, opts={}) { 
             const names = [].concat(name.includes(':') ? name.split(':') : name),
                   stopProp = e => e.stopPropagation();
 
