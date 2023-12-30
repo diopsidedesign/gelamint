@@ -64,7 +64,7 @@ export const gel = (function(){
       return seed.replace(/[^a-z0-9]/ig,'') + instanceCts[seed] 
    }
   
-   return class _gel extends HTMLElement {  
+   return class extends HTMLElement {  
 
       // allows instances of a class to access the static styles
       // of other dynamically generated class definitions 
