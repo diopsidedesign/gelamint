@@ -252,19 +252,6 @@ export const mint = (function() {
       }
    }
 
-   // if the 'commandResponses' object is included on the gel.mint configuration
-   // object, its value is passed to this function as '$gcommandResponses'. 
-   // A Responder instance is created for each property on the command responses
-   // object, and its corresponding Behavior is added to the behavior init queue
-   function initCommandResponses($gcommandResponses){
-      Object.entries( funcs.evalTilNotFunc(this, $gcommandResponses) )
-         .forEach(([ev, respDef])=> {  
-            this.behaviors.push(
-               ()=> (new Behavior(...Responder.call(this, ev, respDef))).enable()
-            )
-         })
-   }
-
    // if the 'eventDefaultsPrevented' option is included on the gel.mint
    // configuration object, its value is passed to this function as
    // '$geventDefaultsPrevented'. For each event name, an event handler is 
