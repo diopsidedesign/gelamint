@@ -175,13 +175,6 @@ Gel.mint('gel-view', {
          }
       )
       this.windowTemplates.add(homePage);
-
-      //this.instanceStyles.updateStyleRule(background-image: linear-gradient(to top, rgb(0 0 0 / .3) 0%, rgb(0 0 0 / .7) 100%), var(--background-path);
-      
-      //setTimeout(()=>{
-      //   Gel.Sheet.docSheet.updateStyleRule('--background-path', `url("./assets/bg3.jpg")`,'gel-view')
-     //    this.instanceStyles.updateStyleRule('background-image', 'linear-gradient(to top, rgb(0 0 0 / .3) 0%, rgb(0 0 0 / .7) 100%), var(--background-path);','gel-view');
-     // })
  
       // stacking list data structure used for window z ordering
       // dash element is added so it can be considered in stacking context like any other gel-frame/window
@@ -211,14 +204,7 @@ Gel.mint('gel-view', {
       'active-page'(newVal, oldVal) {         
          if (this.lastPage === newVal)
             return;
-         this.lastPage = newVal;
-       /*  const dashCtrls = Array.from(this.dashSlot.children)
-            .filter(el=> {
-               const n = el.getAttribute('name');
-               return n.includes('gel') && n.includes("controls")
-            });
-         if (dashCtrls.length)
-            dashCtrls.forEach(ctrlEl=> ctrlEl.remove());*/
+         this.lastPage = newVal; 
          this.stagedContent.replaceChildren();//clear doc frag
          for (const slotName of this.slots.type.frame) {
                const open = this.slots[slotName].map( this.getNames );
